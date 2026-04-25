@@ -487,6 +487,8 @@ def _init_db() -> None:
         ("session_timeout", "1440"),
         ("notifications_enabled", "true"),
         ("two_factor_required", "false"),
+        ("oauth_auto_register", "false"),
+        ("allowed_oauth_domains", "[]"),
     ]
     for key, value in default_settings:
         if not conn.execute("SELECT id FROM settings WHERE key = ?", (key,)).fetchone():
@@ -1035,32 +1037,55 @@ def oauth_session(payload: OAuthSessionPayload):
     if not provider or not provider_account_id:
         return _error("Provider and provider account ID are required", 400)
 
+    email = (payload.email or "").strip().lower()
     base_username = (
         (payload.username or "").strip()
-        or (payload.email or "").split("@")[0].strip()
+        or email.split("@")[0].strip()
         or f"{provider}_{provider_account_id[:8]}"
     )
-    email = (payload.email or "").strip().lower()
 
     conn = _db()
-    user = None
+    
+    # 🔍 চেক করুন: Auto-register অনুমোদিত কিনা
+    settings_row = conn.execute(
+        "SELECT value FROM settings WHERE key = 'oauth_auto_register'"
+    ).fetchone()
+    auto_register = settings_row and settings_row["value"].lower() == "true"
+    
+    # 🔍 চেক করুন: ইমেইল ডোমেইন অনুমোদিত কিনা
+    if email and "@" in email:
+        domain = email.split("@")[-1]
+        allowed_row = conn.execute(
+            "SELECT value FROM settings WHERE key = 'allowed_oauth_domains'"
+        ).fetchone()
+        if allowed_row and allowed_row["value"] != "[]":
+            allowed_domains = json.loads(allowed_row["value"])
+            if domain not in allowed_domains:
+                conn.close()
+                return _error(f"'{domain}' ডোমেইন OAuth লগইনের জন্য অনুমোদিত নয়", 403)
 
+    # ইউজার খুঁজুন
+    user = None
     if email:
         user = conn.execute(
-            "SELECT * FROM users WHERE lower(email) = ?", (email,)
+            "SELECT * FROM users WHERE lower(email) = ? AND is_active = 1", (email,)
         ).fetchone()
 
     if not user:
         user = conn.execute(
-            "SELECT * FROM users WHERE username = ?", (base_username,)
+            "SELECT * FROM users WHERE username = ? AND is_active = 1", (base_username,)
         ).fetchone()
 
+    # ❌ ইউজার না পাওয়া গেলে এবং auto-register বন্ধ থাকলে ERROR দিন
+    if not user and not auto_register:
+        conn.close()
+        return _error("অ্যাকাউন্ট পাওয়া যায়নি। দয়া করে রেজিস্টার করুন অথবা অ্যাডমিনের সাথে যোগাযোগ করুন।", 404)
+
+    # ✅ Auto-register চালু থাকলে নতুন ইউজার তৈরি করুন
     if not user:
         username = base_username
         suffix = 1
-        while conn.execute(
-            "SELECT id FROM users WHERE username = ?", (username,)
-        ).fetchone():
+        while conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone():
             suffix += 1
             username = f"{base_username}-{suffix}"
 
@@ -1073,23 +1098,23 @@ def oauth_session(payload: OAuthSessionPayload):
                 username,
                 _hash_password(secrets.token_urlsafe(24)),
                 email,
-                (datetime.now(timezone.utc) + timedelta(days=3650)).isoformat(),
+                (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
                 _now_iso(),
             ),
         )
-        _log_activity(conn, "user", "info", f"OAuth user created: {username} via {provider}")
+        _log_activity(conn, "user", "info", f"OAuth অ্যাকাউন্ট তৈরি: {username}")
         conn.commit()
-        user = conn.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
-        ).fetchone()
+        user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
 
-    _log_activity(conn, "login", "info", f"OAuth login: {user['username']} via {provider}", user["id"])
+    # লগইন সফল হলে last_login আপডেট
+    conn.execute("UPDATE users SET last_login = ? WHERE id = ?", (_now_iso(), user["id"]))
+    _log_activity(conn, "login", "info", f"OAuth লগইন: {user['username']}", user["id"])
     conn.commit()
     conn.close()
 
-    return _success("OAuth session synced", {
+    return _success("OAuth সেশন সিঙ্ক সম্পন্ন", {
         "username": user["username"],
-        "role": "admin",
+        "role": "admin" if user["plan"] == "enterprise" else "user",
         "plan": user["plan"],
         "id": str(user["id"]),
     })
