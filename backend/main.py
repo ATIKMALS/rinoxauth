@@ -341,7 +341,7 @@ def _init_db() -> None:
 
         CREATE TABLE IF NOT EXISTS resellers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
+            username TEXT UNIQUE NOT NULL,
             email TEXT,
             password_hash TEXT,
             credits INTEGER NOT NULL DEFAULT 100,
@@ -395,6 +395,16 @@ def _init_db() -> None:
             is_active INTEGER NOT NULL DEFAULT 1,
             created_by TEXT,
             created_at TEXT NOT NULL
+        );
+                       
+        CREATE TABLE IF NOT EXISTS password_resets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            expires_at TEXT NOT NULL,
+            used INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
         );
     """)
 
@@ -494,7 +504,6 @@ def _init_db() -> None:
     except Exception as e:
         print(f"⚠️ Index creation: {e}")
 
-    conn.commit()
     conn.close()
     print("✅ Database initialized successfully!")
     print(f"   📁 DB Path: {DB_PATH}")
