@@ -4,10 +4,13 @@ import { Layers, ExternalLink, Trash2, Users, Activity } from "lucide-react";
 import { AppsClientWrapper } from "./client-wrapper";
 import { revalidatePath } from "next/cache";
 import { CredentialsButton } from "./credentials-button";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-async function getApps() {
+async function getApps(createdBy?: string) {
   try {
-    const res = await fetch(`${env.BACKEND_BASE_URL}/api/apps`, { cache: "no-store" });
+    const query = createdBy ? `?created_by=${encodeURIComponent(createdBy)}` : "";
+    const res = await fetch(`${env.BACKEND_BASE_URL}/api/apps${query}`, { cache: "no-store" });
     if (!res.ok) return [];
     const data = await res.json();
     return data.data || (Array.isArray(data) ? data : []);
@@ -17,7 +20,9 @@ async function getApps() {
 }
 
 export default async function AppsPage() {
-  const apps = await getApps();
+  const session = await getServerSession(authOptions);
+  const currentUser = session?.user?.username;
+  const apps = await getApps(currentUser);
   const activeApps = apps.filter((a: any) => a.status === "active").length;
 
   return (
@@ -33,7 +38,7 @@ export default async function AppsPage() {
           </h1>
           <p className="text-sm text-zinc-400 mt-1">Create and manage your application credentials</p>
         </div>
-        <AppsClientWrapper apps={apps} />
+        <AppsClientWrapper apps={apps} currentUser={currentUser} />
       </div>
 
       {/* Stats */}
@@ -57,7 +62,7 @@ export default async function AppsPage() {
         </Card>
       </div>
 
-      {/* ✅ SINGLE TABLE */}
+      {/* Applications Table */}
       <Card className="overflow-hidden">
         <div className="p-4 border-b border-zinc-800/50">
           <p className="text-sm text-zinc-400 flex items-center gap-2">
@@ -117,10 +122,8 @@ export default async function AppsPage() {
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center justify-center gap-2">
-                        {/* ✅ View Credentials Button - Client Component */}
                         <CredentialsButton appId={app.id} />
                         
-                        {/* Client Portal */}
                         <a 
                           href={env.BACKEND_BASE_URL} 
                           target="_blank" 
@@ -131,7 +134,6 @@ export default async function AppsPage() {
                           <ExternalLink className="h-4 w-4" />
                         </a>
                         
-                        {/* Delete */}
                         <form action={async (formData: FormData) => {
                           "use server";
                           const appId = String(formData.get("app_id") ?? "");

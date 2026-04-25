@@ -10,7 +10,9 @@ export async function GET() {
   }
 
   try {
-    const res = await fetch(`${env.BACKEND_BASE_URL}/api/apps`, { cache: "no-store" });
+    const username = session.user.username;
+    const query = username ? `?created_by=${encodeURIComponent(username)}` : "";
+    const res = await fetch(`${env.BACKEND_BASE_URL}/api/apps${query}`, { cache: "no-store" });
     if (!res.ok) {
       return NextResponse.json(
         { error: "Failed to fetch applications", message: await res.text() },

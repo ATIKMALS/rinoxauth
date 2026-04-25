@@ -171,6 +171,7 @@ export interface LicenseRecord {
   app_id?: number;
   user_id?: number;
   is_lifetime?: boolean;
+  hwid_lock?: boolean;
 }
 
 export interface CreateLicensePayload {

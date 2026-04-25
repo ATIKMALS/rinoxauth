@@ -14,9 +14,10 @@ import {
 interface CreateAppFormProps {
   onClose: () => void;
   onSuccess?: () => void;
+  createdBy?: string;
 }
 
-export function CreateAppForm({ onClose, onSuccess }: CreateAppFormProps) {
+export function CreateAppForm({ onClose, onSuccess, createdBy }: CreateAppFormProps) {
   const [formData, setFormData] = useState({
     app_name: "",
     version: "1.0.0",
@@ -55,6 +56,7 @@ export function CreateAppForm({ onClose, onSuccess }: CreateAppFormProps) {
         body: JSON.stringify({
           app_name: formData.app_name,
           version: formData.version,
+          created_by: createdBy,
         }),
       });
 

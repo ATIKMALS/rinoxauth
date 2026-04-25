@@ -2,10 +2,22 @@ import { Card } from "@/components/ui/card";
 import { env } from "@/lib/config";
 import { revalidatePath } from "next/cache";
 import { 
-  Key, Activity, Trash2, RefreshCw, Ban, Play, Info
+  Key, Activity, Trash2, RefreshCw, Ban, Play, Info, Search
 } from "lucide-react";
 import { LicensesClientWrapper } from "./client-wrapper";
 import { CopyButton } from "./copy-button";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+
+async function getApps(createdBy?: string) {
+  try {
+    const query = createdBy ? `?created_by=${encodeURIComponent(createdBy)}` : "";
+    const res = await fetch(`${env.BACKEND_BASE_URL}/api/apps${query}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.data || [];
+  } catch { return []; }
+}
 
 async function getLicenses() {
   try {
@@ -13,13 +25,13 @@ async function getLicenses() {
     if (!res.ok) return [];
     const data = await res.json();
     return data.data || (Array.isArray(data) ? data : []);
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 export default async function LicensesPage() {
-  const licenses = await getLicenses();
+  const session = await getServerSession(authOptions);
+  const currentUser = session?.user?.username;
+  const [licenses, apps] = await Promise.all([getLicenses(), getApps(currentUser)]);
   const activeLicenses = licenses.filter((l: any) => l.status === "active").length;
   const expiredLicenses = licenses.filter((l: any) => l.status === "expired" || (l.expires_at && new Date(l.expires_at) < new Date())).length;
   const revokedLicenses = licenses.filter((l: any) => l.status === "revoked").length;
@@ -27,7 +39,7 @@ export default async function LicensesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
@@ -42,27 +54,52 @@ export default async function LicensesPage() {
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-4 relative overflow-hidden group hover:scale-[1.02] transition-all">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl" />
-          <p className="text-xs text-zinc-400 uppercase tracking-wider relative">Total Licenses</p>
-          <p className="text-2xl font-bold text-white mt-1 relative">{licenses.length}</p>
-        </Card>
-        <Card className="p-4 relative overflow-hidden group hover:scale-[1.02] transition-all">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl" />
-          <p className="text-xs text-zinc-400 uppercase tracking-wider relative">Active Licenses</p>
-          <p className="text-2xl font-bold text-emerald-400 mt-1 relative">{activeLicenses}</p>
-        </Card>
-        <Card className="p-4 relative overflow-hidden group hover:scale-[1.02] transition-all">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/10 rounded-full blur-xl" />
-          <p className="text-xs text-zinc-400 uppercase tracking-wider relative">Expired</p>
-          <p className="text-2xl font-bold text-rose-400 mt-1 relative">{expiredLicenses}</p>
-        </Card>
-        <Card className="p-4 relative overflow-hidden group hover:scale-[1.02] transition-all">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-xl" />
-          <p className="text-xs text-zinc-400 uppercase tracking-wider relative">Revoked</p>
-          <p className="text-2xl font-bold text-amber-400 mt-1 relative">{revokedLicenses}</p>
-        </Card>
+        {[
+          { label: "Total Licenses", value: licenses.length, color: "indigo" },
+          { label: "Active Licenses", value: activeLicenses, color: "emerald" },
+          { label: "Expired", value: expiredLicenses, color: "rose" },
+          { label: "Revoked", value: revokedLicenses, color: "amber" },
+        ].map((stat) => (
+          <Card key={stat.label} className="p-4 relative overflow-hidden group hover:scale-[1.02] transition-all">
+            <div className={`absolute top-0 right-0 w-24 h-24 bg-${stat.color}-500/10 rounded-full blur-xl`} />
+            <p className="text-xs text-zinc-400 uppercase tracking-wider relative">{stat.label}</p>
+            <p className={`text-2xl font-bold text-${stat.color === "indigo" ? "white" : stat.color + "-400"} mt-1 relative`}>{stat.value}</p>
+          </Card>
+        ))}
       </div>
+
+      {/* Search & Filters */}
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+            <input 
+              placeholder="Search licenses by key or note..." 
+              className="w-full rounded-xl border border-zinc-700/50 bg-zinc-800/50 pl-10 pr-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all" 
+            />
+          </div>
+          <div className="flex gap-2">
+            <select className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-4 py-2.5 text-sm text-zinc-300 cursor-pointer">
+              <option value="">All Applications</option>
+              {apps.map((app: any) => (
+                <option key={app.id} value={app.id}>{app.name}</option>
+              ))}
+            </select>
+            <select className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-4 py-2.5 text-sm text-zinc-300 cursor-pointer">
+              <option>All Status</option>
+              <option>Active</option>
+              <option>Expired</option>
+              <option>Revoked</option>
+            </select>
+            <select className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-4 py-2.5 text-sm text-zinc-300 cursor-pointer">
+              <option>All Plans</option>
+              {[...new Set(licenses.map((l: any) => l.plan).filter(Boolean))].map((plan: any) => (
+                <option key={plan} value={plan}>{plan}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Card>
 
       {/* Table */}
       <Card className="overflow-hidden">
@@ -87,6 +124,7 @@ export default async function LicensesPage() {
               <thead>
                 <tr className="border-b border-zinc-800/50 bg-zinc-900/50">
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-zinc-400 uppercase">License Key</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-semibold text-zinc-400 uppercase">Application</th>
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-zinc-400 uppercase">Plan</th>
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-zinc-400 uppercase">HWID</th>
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-zinc-400 uppercase">Devices</th>
@@ -101,10 +139,12 @@ export default async function LicensesPage() {
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-sm text-white">{license.key}</span>
-                        {/* ✅ Copy Button with actual copy function */}
                         <CopyButton text={license.key} />
                       </div>
                       {license.note && <p className="text-xs text-zinc-500 mt-0.5">{license.note}</p>}
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="text-sm text-zinc-400">{license.application_name || "Unknown"}</span>
                     </td>
                     <td className="px-4 py-4">
                       <span className="px-2.5 py-1 rounded-lg bg-zinc-500/10 text-zinc-400 text-xs font-semibold uppercase border border-zinc-500/20">{license.plan}</span>
@@ -144,11 +184,10 @@ export default async function LicensesPage() {
                         </form>
                         <form action={async (formData: FormData) => {
                           "use server";
-                          const action = String(formData.get("action"));
                           await fetch(`${env.BACKEND_BASE_URL}/api/admin/licenses/${formData.get("license_id")}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ status: action }),
+                            body: JSON.stringify({ status: String(formData.get("action")) }),
                           });
                           revalidatePath("/licenses");
                         }}>

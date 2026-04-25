@@ -42,9 +42,17 @@ export function CreateUserForm({ onClose, onSuccess }: CreateUserFormProps) {
     try {
       setIsLoadingApps(true);
       setFetchError(null);
+      
+      // ✅ Get current user from session
+      const sessionRes = await fetch('/api/auth/session');
+      const sessionData = await sessionRes.json().catch(() => ({}));
+      const currentUser = sessionData?.user?.username || '';
+      
+      // ✅ Send created_by to filter apps
+      const query = currentUser ? `?created_by=${encodeURIComponent(currentUser)}` : '';
+      const response = await fetch(`${CLIENT_BACKEND_BASE_URL}/api/apps${query}`);
 
-      const response = await fetch("/api/apps");
-
+      // ✅ Check if response is OK
       if (!response.ok) throw new Error(`Failed (${response.status})`);
 
       const data = await response.json();
@@ -78,21 +86,23 @@ export function CreateUserForm({ onClose, onSuccess }: CreateUserFormProps) {
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    
-    // ✅ Username - minimum 1 character (changed from 3)
+
+    if (!formData.app_id) {
+      newErrors.app_id = "Please select an application";
+    }
+
     if (!formData.username || formData.username.length < 1) {
       newErrors.username = "Username is required";
     }
-    
-    // ✅ Password - minimum 1 character (changed from 6)
+
     if (!formData.password || formData.password.length < 1) {
       newErrors.password = "Password is required";
     }
-    
+
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = "Invalid email format";
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -106,7 +116,6 @@ export function CreateUserForm({ onClose, onSuccess }: CreateUserFormProps) {
     try {
       const totalSeconds = formData.days * 86400 + formData.hours * 3600 + formData.minutes * 60 + formData.seconds;
       
-      // ✅ Fixed: Use backendUrl variable
       const response = await fetch(`${CLIENT_BACKEND_BASE_URL}/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -151,7 +160,7 @@ export function CreateUserForm({ onClose, onSuccess }: CreateUserFormProps) {
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
             <div className="flex items-center justify-between">
               <p className="text-sm text-amber-400 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" /> Failed to load
+                <AlertCircle className="h-4 w-4" /> Failed to load: {fetchError}
               </p>
               <button type="button" onClick={fetchApps} className="p-2 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">
                 <RefreshCw className="h-4 w-4" />
@@ -168,7 +177,7 @@ export function CreateUserForm({ onClose, onSuccess }: CreateUserFormProps) {
               className="w-full rounded-xl border border-zinc-700/50 bg-zinc-800/50 pl-10 pr-10 py-2.5 text-sm text-white backdrop-blur-sm focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all appearance-none cursor-pointer disabled:opacity-50"
             >
               <option value="" className="bg-zinc-900 text-zinc-500">
-                {isLoadingApps ? "Loading..." : apps.length === 0 ? "No apps" : "Select application"}
+                {isLoadingApps ? "Loading..." : apps.length === 0 ? "No apps - Create one first" : "Select application"}
               </option>
               {apps.map((app) => (
                 <option key={app.id} value={app.id} className="bg-zinc-900 text-white">
