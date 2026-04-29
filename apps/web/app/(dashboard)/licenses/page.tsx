@@ -8,6 +8,7 @@ import { LicensesClientWrapper } from "./client-wrapper";
 import { CopyButton } from "./copy-button";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { api } from "@/services/api";
 
 async function getApps(createdBy?: string) {
   try {
@@ -21,10 +22,8 @@ async function getApps(createdBy?: string) {
 
 async function getLicenses() {
   try {
-    const res = await fetch(`${env.BACKEND_BASE_URL}/api/licenses`, { cache: "no-store" });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.data || (Array.isArray(data) ? data : []);
+    const data = await api.licenses.list({});
+    return Array.isArray(data) ? data : [];
   } catch { return []; }
 }
 
@@ -57,7 +56,7 @@ export default async function LicensesPage() {
         <LicensesClientWrapper licenses={licenses} />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
         {[
           { label: "Total Licenses", value: licenses.length, color: "indigo" },
           { label: "Active Licenses", value: activeLicenses, color: "emerald" },
